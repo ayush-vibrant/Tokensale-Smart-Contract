@@ -1,3 +1,6 @@
+pragma solidity ^0.4.21;
+
+
 interface IERC20Token {
     function balanceOf(address owner) public returns (uint256);
     function transfer(address to, uint256 amount) public returns (bool);
@@ -14,4 +17,47 @@ contract TokenSale {
         tokenContract = _tokenContract;
         price = _price;
     }
+
+    // Guards against integer overflows
+    function safeMultiply(uint256 a, uint256 b) internal pure returns (uint256) {
+        if (a == 0) {
+            return 0;
+        } else {
+            uint256 c = a * b;
+            assert(c / a == b);
+            return c;
+        }
+    }
+
+    uint256 public tokensSold;
+
+    event Sold(address buyer, uint256 amount);
+
+    function buyTokens(uint256 numberOfTokens) public payable {
+        require(msg.value == safeMultiply(numberOfTokens, price)); //safeMultiply is used to guard against integer overflows.
+
+        uint256 scaledAmount = safeMultiply(numberOfTokens,
+                uint256(10) ** tokenContract.decimals()); //in order to support fixed point math on tokens, 
+                //“1 token” is represented in the token contract as a value of 10^decimals,
+                // where decimals is how many decimal places after the zero the contract supports.
+                // I convert the number of tokens to this scaled number in scaledAmount.
+
+        require(tokenContract.balanceOf(this) >= scaledAmount);
+
+        emit Sold(msg.sender, numberOfTokens);
+        tokensSold += numberOfTokens;
+
+        require(tokenContract.transfer(msg.sender, scaledAmount));
+    }
+
+    function endSale() public {
+        require(msg.sender == owner);
+        
+        // Send unsold tokens to the owner.
+        require(tokenContract.transfer(owner, tokenContract.balanceOf(this)));
+        msg.sender.transfer(address(this).balance);
+    }
+
+
 }
+
